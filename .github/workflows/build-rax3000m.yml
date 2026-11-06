@@ -60,5 +60,33 @@ jobs:
         echo "CONFIG_PACKAGE_kmod-fs-ext4=y" >> .config
         echo "CONFIG_PACKAGE_kmod-usb3=y" >> .config
 
-        # 3. 使用 olddefconfig 清理并补全配置，避免多余机型干扰
-        make olddefconfig
+        # 3. 使用非交互式环境变量运行配置生成，避免终端报错
+        export TERM=xterm-256color
+        yes "" | make oldconfig
+
+    - name: Compile Firmware
+      working-directory: ${{ env.OPENWRT_PATH }}
+      run: |
+        make -j$(nproc) || make -j1 V=s
+
+    - name: Organize Files
+      id: organize
+      if: success()
+      run: |
+        cd ${{ env.OPENWRT_PATH }}/bin/targets/mediatek/mt7981*
+        rm --packages 2>/dev/null || true
+        echo "FIRMWARE=$(pwd)" >> $GITHUB_ENV
+        echo "status=success" >> $GITHUB_OUTPUT
+
+    - name: Upload Firmware to Release
+      uses: softprops/action-gh-release@v1
+      if: steps.organize.outputs.status == 'success' && !cancelled()
+      with:
+        tag_name: rax3000m-emmc-$(date +%Y%m%d)
+        name: RAX3000M eMMC ImmortalWrt ($(date +%Y-%m-%d))
+        files: ${{ env.FIRMWARE }}/*sysupgrade.bin
+        body: |
+          ### RAX3000M eMMC 专属定制固件
+          - 包含 Docker 与 NAS 组件
+          - 适配 1024MB GPT 大分区
+          - 对应物理 MAC 地址与硬件架构
