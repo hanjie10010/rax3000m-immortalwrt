@@ -47,45 +47,18 @@ jobs:
     - name: Generate Configuration (.config) with Plugins
       working-directory: ${{ env.OPENWRT_PATH }}
       run: |
-        # 1. 基础平台选择 mediatek/mt7981
+        rm -rf .config
+        # 1. 严格锁定 mediatek/mt7981 架构与 RAX3000M eMMC 专属设备
         echo "CONFIG_TARGET_mediatek=y" > .config
         echo "CONFIG_TARGET_mediatek_mt7981=y" >> .config
-        # 2. 精确指定 RAX3000M eMMC 设备的 Profile（避免多余镜像打包导致报错）
         echo "CONFIG_TARGET_DEVICE_mediatek_mt7981_device_cmcc_rax3000m-emmc=y" >> .config
 
-        # 3. 基础必备组件与 NAS / Docker 支持
+        # 2. 注入所需插件与底层驱动
         echo "CONFIG_PACKAGE_docker=y" >> .config
         echo "CONFIG_PACKAGE_luci-app-dockerman=y" >> .config
         echo "CONFIG_PACKAGE_luci-app-samba4=y" >> .config
         echo "CONFIG_PACKAGE_kmod-fs-ext4=y" >> .config
         echo "CONFIG_PACKAGE_kmod-usb3=y" >> .config
 
-        # 4. 自动生成默认配置
-        make defconfig
-
-    - name: Compile Firmware
-      working-directory: ${{ env.OPENWRT_PATH }}
-      run: |
-        make -j$(nproc) || make -j1 V=s
-
-    - name: Organize Files
-      id: organize
-      if: success()
-      run: |
-        cd ${{ env.OPENWRT_PATH }}/bin/targets/mediatek/mt7981*
-        rm --packages 2>/dev/null || true
-        echo "FIRMWARE=$(pwd)" >> $GITHUB_ENV
-        echo "status=success" >> $GITHUB_OUTPUT
-
-    - name: Upload Firmware to Release
-      uses: softprops/action-gh-release@v1
-      if: steps.organize.outputs.status == 'success' && !cancelled()
-      with:
-        tag_name: rax3000m-emmc-$(date +%Y%m%d)
-        name: RAX3000M eMMC ImmortalWrt ($(date +%Y-%m-%d))
-        files: ${{ env.FIRMWARE }}/*sysupgrade.bin
-        body: |
-          ### RA3000M eMMC 专属定制固件
-          - 包含 Docker 与 NAS 组件
-          - 适配 1024MB GPT 大分区
-          - 对应物理 MAC 地址与硬件架构
+        # 3. 使用 olddefconfig 清理并补全配置，避免多余机型干扰
+        make olddefconfig
